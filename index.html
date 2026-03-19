@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分數互動探索工具</title>
+    <style>
+        :root {
+            --primary: #4A90E2;
+            --bg: #F5F7FA;
+            --empty: #E2E8F0;
+            --text: #2D3748;
+        }
+        body {
+            font-family: '微軟正黑體', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 { margin-bottom: 10px; color: #1A365D; }
+        .controls {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            display: inline-block;
+            margin-bottom: 20px;
+            gap: 15px;
+            display: inline-flex;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        select, input, button {
+            font-size: 16px;
+            padding: 8px 12px;
+            border: 2px solid #CBD5E0;
+            border-radius: 8px;
+            outline: none;
+        }
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        button:hover { background-color: #357ABD; }
+        
+        .result-text {
+            font-size: 28px;
+            font-weight: bold;
+            margin: 20px 0;
+            color: #E53E3E;
+            background: #FFF5F5;
+            padding: 15px;
+            border-radius: 12px;
+            display: inline-block;
+        }
+
+        .workspace {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        /* SVG 樣式 */
+        .shape-container {
+            width: 150px;
+            height: 150px;
+        }
+        .fraction-piece {
+            fill: var(--empty);
+            stroke: #A0AEC0;
+            stroke-width: 2;
+            cursor: pointer;
+            transition: fill 0.2s, transform 0.1s;
+        }
+        .fraction-piece:hover {
+            fill: #EDF2F7;
+        }
+        .fraction-piece.active {
+            fill: var(--primary);
+        }
+        .fraction-piece.active:hover {
+            fill: #357ABD;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>分數互動探索工具</h1>
+    
+    <div class="controls">
+        <label>
+            形狀：
+            <select id="shapeType">
+                <option value="circle">圓形 (披薩)</option>
+                <option value="rect">長條形 (巧克力)</option>
+            </select>
+        </label>
+        <label>
+            平分成幾等分：
+            <input type="number" id="denominator" value="3" min="1" max="12" style="width: 60px;">
+        </label>
+        <button onclick="generateWorkspace()">產生空格</button>
+        <button onclick="resetWorkspace()" style="background-color: #718096;">清空重來</button>
+    </div>
+
+    <div>
+        <div class="result-text" id="fractionDisplay">請點擊下方空格放入分數！目前是 0</div>
+    </div>
+
+    <div class="workspace" id="workspace"></div>
+
+    <script>
+        const workspace = document.getElementById('workspace');
+        const fractionDisplay = document.getElementById('fractionDisplay');
+        const numWholes = 3; // 固定提供 3 個完整的空間，方便操作出帶分數/假分數
+        let currentDenominator = 3;
+        let selectedCount = 0;
+
+        function generateWorkspace() {
+            const shape = document.getElementById('shapeType').value;
+            currentDenominator = parseInt(document.getElementById('denominator').value) || 1;
+            
+            // 安全機制，避免數字過大造成渲染問題
+            if(currentDenominator < 1) currentDenominator = 1;
+            if(currentDenominator > 24) currentDenominator = 24;
+
+            workspace.innerHTML = '';
+            selectedCount = 0;
+            updateFractionText();
+
+            for (let i = 0; i < numWholes; i++) {
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('viewBox', '0 0 100 100');
+                svg.classList.add('shape-container');
+
+                if (shape === 'circle') {
+                    createCirclePieces(svg, currentDenominator);
+                } else {
+                    createRectPieces(svg, currentDenominator);
+                }
+                workspace.appendChild(svg);
+            }
+        }
+
+        // 建立圓形的等分切片
+        function createCirclePieces(svg, denominator) {
+            const cx = 50, cy = 50, r = 48;
+
+            if (denominator === 1) {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', cx);
+                circle.setAttribute('cy', cy);
+                circle.setAttribute('r', r);
+                circle.classList.add('fraction-piece');
+                circle.onclick = togglePiece;
+                svg.appendChild(circle);
+                return;
+            }
+
+            const angleStep = 360 / denominator;
+            for (let i = 0; i < denominator; i++) {
+                const startAngle = i * angleStep;
+                const endAngle = (i + 1) * angleStep;
+                
+                // 將角度轉換為 SVG 座標 (需減去 90 度讓第一塊從 12 點鐘方向開始)
+                const startRad = (startAngle - 90) * Math.PI / 180;
+                const endRad = (endAngle - 90) * Math.PI / 180;
+
+                const x1 = cx + r * Math.cos(startRad);
+                const y1 = cy + r * Math.sin(startRad);
+                const x2 = cx + r * Math.cos(endRad);
+                const y2 = cy + r * Math.sin(endRad);
+
+                // 大於 180 度的弧線需設定 large-arc-flag
+                const largeArc = angleStep > 180 ? 1 : 0;
+                const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', pathData);
+                path.classList.add('fraction-piece');
+                path.onclick = togglePiece;
+                svg.appendChild(path);
+            }
+        }
+
+        // 建立長條形的等分切片
+        function createRectPieces(svg, denominator) {
+            const width = 96, height = 96;
+            const pieceWidth = width / denominator;
+
+            for (let i = 0; i < denominator; i++) {
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', 2 + i * pieceWidth);
+                rect.setAttribute('y', 2);
+                rect.setAttribute('width', pieceWidth);
+                rect.setAttribute('height', height);
+                rect.classList.add('fraction-piece');
+                rect.onclick = togglePiece;
+                svg.appendChild(rect);
+            }
+        }
+
+        // 處理點擊事件：切換選取狀態並計算總數
+        function togglePiece(event) {
+            const piece = event.target;
+            if (piece.classList.contains('active')) {
+                piece.classList.remove('active');
+                selectedCount--;
+            } else {
+                piece.classList.add('active');
+                selectedCount++;
+            }
+            updateFractionText();
+        }
+
+        // 重設目前畫面上的選取狀態
+        function resetWorkspace() {
+            const pieces = document.querySelectorAll('.fraction-piece');
+            pieces.forEach(p => p.classList.remove('active'));
+            selectedCount = 0;
+            updateFractionText();
+        }
+
+        // 更新大字體的分數顯示
+        function updateFractionText() {
+            if (selectedCount === 0) {
+                fractionDisplay.textContent = '目前沒有放入任何分數';
+                return;
+            }
+
+            // 建立分數的文字描述
+            let text = `目前有 ${selectedCount} 個 1/${currentDenominator}，`;
+            
+            if (currentDenominator === 1) {
+                text += `也就是整數 ${selectedCount}`;
+            } else {
+                text += `合起來是 ${selectedCount}/${currentDenominator}`;
+                
+                // 如果超過一個完整的圖形，給予特別的提示
+                if (selectedCount > currentDenominator) {
+                    text += ' (這是假分數喔！)';
+                } else if (selectedCount === currentDenominator) {
+                    text += ' (剛好湊成完整的 1 個！)';
+                }
+            }
+            
+            fractionDisplay.textContent = text;
+        }
+
+        // 初始化
+        window.onload = generateWorkspace;
+    </script>
+</body>
+</html>
